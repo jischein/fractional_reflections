@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+	<title>Perlin Noise Experiment</title>
+	<meta charset='utf-8'>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+	<link href='https://fonts.googleapis.com/css?family=Share+Tech+Mono' rel='stylesheet' type='text/css'>
+	<script src="lib/html2canvas.js"></script>
+
+	<style>
+	body {
+		background-color: #000;
+		margin: 0px;
+		overflow: hidden;
+	}
+
+	#info {
+		color: #fff;
+		position: absolute;
+		bottom: 20px;
+		padding: 5px 20px;
+		font-family: 'Share Tech Mono', Arial, Helvetica, sans-serif;
+		font-weight: 100;
+		font-size: 18px;
+		background-color: #000;
+	}
+	#snapshot {
+		position: absolute;
+		font-family: 'Share Tech Mono', Arial, Helvetica, sans-serif;
+		bottom: 20px;
+		-webkit-appearance: none;
+		 -moz-appearance: none;
+					appearance: none;
+		outline: 0;
+		margin-left:1200px;
+		background-color: black;
+		border: none;
+		padding: 5px 8px;
+		color: white;
+		border-radius: 3px;
+		width: 145px;
+		cursor: pointer;
+		font-size: 18px;
+	-webkit-transition-duration: 0.25s;
+					transition-duration: 0.25s;
+}
+
+	#snapshot:hover{
+		color:black;
+		background-color:white;
+	}
+
+
+	a{
+		color: #DDD;
+	}
+
+	</style>
+</head>
+<body>
+
+	<div id='info'>perlin noisey mirror. try and click // move your mouse. make sure you're using an updated version of chrome. -jacob</div>
+	<div id='container'></div>
+
+	<script src='lib/three.min.js'></script>
+	<script src='lib/dat.gui.min.js'></script>
+	<script src='lib/stats.min.js'></script>
+	<script src='lib/postprocessing/EffectComposer.js'></script>
+	<script src='lib/postprocessing/RenderPass.js'></script>
+	<script src='lib/postprocessing/ShaderPass.js'></script>
+	<script src='lib/postprocessing/MaskPass.js'></script>
+	<script src='lib/shaders/CopyShader.js'></script>
+	<script src='lib/shaders/perlinShader.js'></script>
+
+
+	<script>
+
+	//Perlin Noisey Mirror.
+	//thanks to Felix Turner @felixturner and his Bad TV Shader Demo for helping me figure out how to connect custom shaders to a video texture // boilerplate the entire process
+	//actual shader based on http://www.iquilezles.org/www/articles/warp/warp.htm
+
+	//force https temp solution fornow
+	//TODO: not have to do this
+	if (location.protocol != 'https:')
+	{
+		location.href = 'https:' + window.location.href.substring(window.location.protocol.length);
+	}
+
+		var camera, scene, renderer;
+		var video, videoTexture,videoMaterial;
+		var composer;
+		var shaderTime = 0;
+		var badTVParams, badTVPass;
+		var perlinParams, perlinPass;
+		var staticParams, staticPass;
+		var rgbParams, rgbPass;
+		var filmParams, filmPass;
+		var renderPass, copyPass;
+		var gui;
+		var pnoise, globalParams;
+		var palette;
+		var pal_ind;
+
+		init();
+		animate();
+
+		function init() {
+
+			camera = new THREE.PerspectiveCamera(55, 1080/ 720, 20, 3000);
+			camera.position.z = 1000;
+			scene = new THREE.Scene();
+
+			//Load Video
+			// video = document.createElement( 'video' );
+			// video.loop = true;
+			// video.src = 'res/fits.mp4';
+			// video.play();
+
+			//Use webcam
+			video = document.createElement('video');
+			video.width = 320;
+			video.height = 240;
+			video.autoplay = true;
+			video.loop = true;
+			//Webcam video
+			window.URL = window.URL || window.webkitURL;
+			navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+			//get webcam
+			navigator.getUserMedia({
+				video: true
+			}, function(stream) {
+				//on webcam enabled
+				video.src = window.URL.createObjectURL(stream);
+			}, function(error) {
+				prompt.innerHTML = 'Unable to capture WebCam. Please reload the page.';
+			});
+
+			//init video texture
+			videoTexture = new THREE.Texture( video );
+			videoTexture.minFilter = THREE.LinearFilter;
+			videoTexture.magFilter = THREE.LinearFilter;
+
+			videoMaterial = new THREE.MeshBasicMaterial( {
+				map: videoTexture
+			} );
+
+			//Add video plane
+			var planeGeometry = new THREE.PlaneGeometry( 1080, 720,1,1 );
+			var plane = new THREE.Mesh( planeGeometry, videoMaterial );
+			scene.add( plane );
+			plane.z = 0;
+			plane.scale.x = plane.scale.y = 1.45;
+
+			//init renderer
+			renderer = new THREE.WebGLRenderer();
+			renderer.setSize( 800, 600 );
+			document.body.appendChild( renderer.domElement );
+
+			//POST PROCESSING
+			//Create Shader Passes
+			renderPass = new THREE.RenderPass( scene, camera );
+			perlinPass = new THREE.ShaderPass( THREE.PerlinShader );
+			copyPass = new THREE.ShaderPass( THREE.CopyShader );
+
+			palette = [
+                    [0.44636, 0., 0.60971],
+                    [0.61287, 0., 0.1995],
+                    [0.86167, 0., 0.99739],
+                    [0.86167, 0., 0.0],
+                    [0.12889, 0., 0.53834],
+                    [0.97652, 0.33542, 0.39393],
+                    [1., 0.0, 0.512],
+                    [0., 0.812, 0.812],
+                    [0.312, 0.0, 1.]
+
+                  ];
+
+			//set shader uniforms
+
+			//Init DAT GUI control panel
+
+
+			onToggleShaders();
+
+			window.addEventListener('resize', onResize, false);
+			renderer.domElement.addEventListener('click', randomizeParams, false);
+			onResize();
+			randomizeParams();
+		}
+
+
+
+		function randomizeParams() {
+			pal_ind = Math.floor(Math.random()*palette.length);
+			perlinPass.uniforms[ 'color_schemaR' ].value =  palette[pal_ind][0];
+			perlinPass.uniforms[ 'color_schemaG' ].value =  palette[pal_ind][1];
+			perlinPass.uniforms[ 'color_schemaB' ].value =  palette[pal_ind][2];
+		}
+
+
+		function onToggleShaders(){
+
+			//Add Shader Passes to Composer
+			//order is important
+			composer = new THREE.EffectComposer( renderer);
+			composer.addPass( renderPass );
+			composer.addPass( perlinPass )
+			composer.addPass( copyPass );
+			copyPass.renderToScreen = true;
+		}
+
+		function animate() {
+
+			shaderTime += 0.1;
+			perlinPass.uniforms[ 'time' ].value =  shaderTime;
+
+
+			if ( video.readyState === video.HAVE_ENOUGH_DATA ) {
+				if ( videoTexture ) videoTexture.needsUpdate = true;
+			}
+
+			requestAnimationFrame( animate );
+			composer.render( 0.1);
+		}
+
+		function onResize() {
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			perlinPass.uniforms[ 'resolution' ].value.x = renderer.domElement.width;
+			perlinPass.uniforms[ 'resolution' ].value.y = renderer.domElement.height;
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+		}
+
+		document.onmousemove = function(e){
+			perlinPass.uniforms[ 'u_mouse' ].value.x = e.pageX
+			perlinPass.uniforms[ 'u_mouse' ].value.y = e.pageY
+		}
+		//takes pix
+		// $('#snapshot').click(function(){
+		// 	window.open( renderer.domElement.toDataURL("image/png"), "Final");
+		// 	return false;
+		// });
+
+	</script>
+</body>
+</html>
